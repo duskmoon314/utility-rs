@@ -1,0 +1,18 @@
+[package]
+name = "utility-types"
+version = "0.0.1"
+edition = "2021"
+authors = ["duskmoon (Campbell He) <kp.campbell.he@duskmoon314.com>"]
+license = "MIT"
+readme = "README.md"
+keywords = ["macro", "proc-macro"]
+categories = ["development-tools"]
+repository = "https://github.com/duskmoon314/utility-rs.git"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "1.0", features = ["full"] }
