@@ -8,6 +8,7 @@ readme = "README.md"
 keywords = ["macro", "proc-macro"]
 categories = ["development-tools"]
 repository = "https://github.com/duskmoon314/utility-rs.git"
+description = "This crate use proc-macro to realize several utility types of TypeScript"
 
 [lib]
 proc-macro = true
