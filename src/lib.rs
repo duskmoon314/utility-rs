@@ -27,29 +27,57 @@ mod kw {
     syn::custom_keyword!(Option);
 }
 
-struct UtilityAttribute {
-    ident: Ident,
-    _comma_1: token::Comma,
-    _bracket_token_1: token::Bracket,
-    field_idents: Punctuated<Ident, Token![,]>,
-    _comma_2: token::Comma,
-    _bracket_token_2: token::Bracket,
-    derive_idents: Punctuated<Ident, Token![,]>,
+struct IdentArray {
+    _bracket_token: token::Bracket,
+    idents: Punctuated<Ident, Token![,]>,
 }
 
-impl Parse for UtilityAttribute {
+impl Parse for IdentArray {
     fn parse(input: ParseStream) -> Result<Self> {
-        let content_1;
-        let content_2;
-        Ok(UtilityAttribute {
-            ident: input.parse()?,
-            _comma_1: input.parse()?,
-            _bracket_token_1: bracketed!(content_1 in input),
-            field_idents: content_1.parse_terminated(Ident::parse)?,
-            _comma_2: input.parse()?,
-            _bracket_token_2: bracketed!(content_2 in input),
-            derive_idents: content_2.parse_terminated(Ident::parse)?,
+        let content;
+        Ok(IdentArray {
+            _bracket_token: bracketed!(content in input),
+            idents: content.parse_terminated(Ident::parse)?,
         })
+    }
+}
+
+enum Attribute {
+    NoDerives {
+        ident: Ident,
+        _comma: token::Comma,
+        key_idents: IdentArray,
+    },
+    Derives {
+        ident: Ident,
+        _comma_1: token::Comma,
+        key_idents: IdentArray,
+        _comma_2: token::Comma,
+        derive_idents: IdentArray,
+    },
+}
+
+impl Parse for Attribute {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let ident: Ident = input.parse()?;
+        let comma: token::Comma = input.parse()?;
+        let idents: IdentArray = input.parse()?;
+        let lookahead = input.lookahead1();
+        if lookahead.peek(token::Comma) {
+            Ok(Attribute::Derives {
+                ident,
+                _comma_1: comma,
+                key_idents: idents,
+                _comma_2: input.parse()?,
+                derive_idents: input.parse()?,
+            })
+        } else {
+            Ok(Attribute::NoDerives {
+                ident,
+                _comma: comma,
+                key_idents: idents,
+            })
+        }
     }
 }
 
@@ -276,37 +304,66 @@ pub fn required(attr: TokenStream, input: TokenStream) -> TokenStream {
 /// Currently, generics are not analyzed. So rustc will complain if the field with generic is not included in the generated struct.
 #[proc_macro_attribute]
 pub fn pick(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_input = parse_macro_input!(attr as UtilityAttribute);
+    let attr_input = parse_macro_input!(attr as Attribute);
     let input = parse_macro_input!(input as ItemStruct);
 
-    let attr_ident = attr_input.ident;
-    let attr_fields = attr_input.field_idents;
-    let attr_derive = attr_input.derive_idents;
-
-    let tokens = match &input {
-        ItemStruct {
-            vis,
-            generics,
-            fields: Fields::Named(fields),
-            ..
-        } => {
-            let fields = fields.named.iter().filter(|v| {
-                attr_fields
-                    .iter()
-                    .any(|av| *av == *v.ident.as_ref().unwrap())
-            });
-            quote! {
-                #input
-                #[derive(#attr_derive)]
-                #vis struct #attr_ident #generics {
-                    #(#fields),*
+    let tokens = match attr_input {
+        Attribute::NoDerives {
+            ident, key_idents, ..
+        } => match &input {
+            ItemStruct {
+                vis,
+                generics,
+                fields: Fields::Named(fields),
+                ..
+            } => {
+                let fields = fields.named.iter().filter(|f| {
+                    key_idents
+                        .idents
+                        .iter()
+                        .any(|k| *k == *f.ident.as_ref().unwrap())
+                });
+                quote! {
+                    #input
+                    #vis struct #ident #generics {
+                        #(#fields),*
+                    }
                 }
             }
-        }
-        _ => Error::new_spanned(&input, "Must define on a struct with named field")
-            .to_compile_error(),
+            _ => Error::new_spanned(&input, "Must define on a struct with named field")
+                .to_compile_error(),
+        },
+        Attribute::Derives {
+            ident,
+            key_idents,
+            derive_idents,
+            ..
+        } => match &input {
+            ItemStruct {
+                vis,
+                generics,
+                fields: Fields::Named(fields),
+                ..
+            } => {
+                let fields = fields.named.iter().filter(|f| {
+                    key_idents
+                        .idents
+                        .iter()
+                        .any(|k| *k == *f.ident.as_ref().unwrap())
+                });
+                let derive_idents = derive_idents.idents;
+                quote! {
+                    #input
+                    #[derive(#derive_idents)]
+                    #vis struct #ident #generics {
+                        #(#fields),*
+                    }
+                }
+            }
+            _ => Error::new_spanned(&input, "Must define on a struct with named field")
+                .to_compile_error(),
+        },
     };
-
     tokens.into()
 }
 
@@ -350,37 +407,66 @@ pub fn pick(attr: TokenStream, input: TokenStream) -> TokenStream {
 /// Currently, generics are not analyzed. So rustc will complain if the field with generic is not included in the generated struct.
 #[proc_macro_attribute]
 pub fn omit(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_input = parse_macro_input!(attr as UtilityAttribute);
+    let attr_input = parse_macro_input!(attr as Attribute);
     let input = parse_macro_input!(input as ItemStruct);
 
-    let attr_ident = attr_input.ident;
-    let attr_fields = attr_input.field_idents;
-    let attr_derive = attr_input.derive_idents;
-
-    let tokens = match &input {
-        ItemStruct {
-            vis,
-            generics,
-            fields: Fields::Named(fields),
-            ..
-        } => {
-            let fields = fields.named.iter().filter(|v| {
-                attr_fields
-                    .iter()
-                    .all(|av| *av != *v.ident.as_ref().unwrap())
-            });
-            quote! {
-                #input
-                #[derive(#attr_derive)]
-                #vis struct #attr_ident #generics {
-                    #(#fields),*
+    let tokens = match attr_input {
+        Attribute::NoDerives {
+            ident, key_idents, ..
+        } => match &input {
+            ItemStruct {
+                vis,
+                generics,
+                fields: Fields::Named(fields),
+                ..
+            } => {
+                let fields = fields.named.iter().filter(|f| {
+                    key_idents
+                        .idents
+                        .iter()
+                        .all(|k| *k != *f.ident.as_ref().unwrap())
+                });
+                quote! {
+                    #input
+                    #vis struct #ident #generics {
+                        #(#fields),*
+                    }
                 }
             }
-        }
-        _ => Error::new_spanned(&input, "Must define on a struct with named field")
-            .to_compile_error(),
+            _ => Error::new_spanned(&input, "Must define on a struct with named field")
+                .to_compile_error(),
+        },
+        Attribute::Derives {
+            ident,
+            key_idents,
+            derive_idents,
+            ..
+        } => match &input {
+            ItemStruct {
+                vis,
+                generics,
+                fields: Fields::Named(fields),
+                ..
+            } => {
+                let fields = fields.named.iter().filter(|f| {
+                    key_idents
+                        .idents
+                        .iter()
+                        .all(|k| *k != *f.ident.as_ref().unwrap())
+                });
+                let derive_idents = derive_idents.idents;
+                quote! {
+                    #input
+                    #[derive(#derive_idents)]
+                    #vis struct #ident #generics {
+                        #(#fields),*
+                    }
+                }
+            }
+            _ => Error::new_spanned(&input, "Must define on a struct with named field")
+                .to_compile_error(),
+        },
     };
-
     tokens.into()
 }
 
@@ -431,31 +517,55 @@ pub fn omit(attr: TokenStream, input: TokenStream) -> TokenStream {
 /// Currently, generics are not analyzed. So rustc will complain if the field with generic is not included in the generated enum.
 #[proc_macro_attribute]
 pub fn exclude(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_input = parse_macro_input!(attr as UtilityAttribute);
+    let attr_input = parse_macro_input!(attr as Attribute);
     let input = parse_macro_input!(input as ItemEnum);
 
-    let attr_ident = attr_input.ident;
-    let attr_variants = attr_input.field_idents;
-    let attr_derive = attr_input.derive_idents;
+    let tokens = match attr_input {
+        Attribute::NoDerives {
+            ident, key_idents, ..
+        } => {
+            let ItemEnum {
+                vis,
+                generics,
+                variants,
+                ..
+            } = &input;
+            let variants = variants
+                .iter()
+                .filter(|v| key_idents.idents.iter().all(|k| *k != v.ident));
+            quote! {
+                #input
+                #vis enum #ident #generics {
+                    #(#variants),*
+                }
+            }
+        }
 
-    let ItemEnum {
-        vis,
-        generics,
-        variants,
-        ..
-    } = &input;
-
-    let variants = variants
-        .iter()
-        .filter(|v| attr_variants.iter().all(|av| *av != v.ident));
-    let tokens = quote! {
-        #input
-        #[derive(#attr_derive)]
-        #vis enum #attr_ident #generics {
-            #(#variants),*
+        Attribute::Derives {
+            ident,
+            key_idents,
+            derive_idents,
+            ..
+        } => {
+            let ItemEnum {
+                vis,
+                generics,
+                variants,
+                ..
+            } = &input;
+            let variants = variants
+                .iter()
+                .filter(|v| key_idents.idents.iter().all(|k| *k != v.ident));
+            let derive_idents = derive_idents.idents;
+            quote! {
+                #input
+                #[derive(#derive_idents)]
+                #vis enum #ident #generics {
+                    #(#variants),*
+                }
+            }
         }
     };
-
     tokens.into()
 }
 
@@ -506,30 +616,54 @@ pub fn exclude(attr: TokenStream, input: TokenStream) -> TokenStream {
 /// Currently, generics are not analyzed. So rustc will complain if the field with generic is not included in the generated enum.
 #[proc_macro_attribute]
 pub fn extract(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_input = parse_macro_input!(attr as UtilityAttribute);
+    let attr_input = parse_macro_input!(attr as Attribute);
     let input = parse_macro_input!(input as ItemEnum);
 
-    let attr_ident = attr_input.ident;
-    let attr_variants = attr_input.field_idents;
-    let attr_derive = attr_input.derive_idents;
+    let tokens = match attr_input {
+        Attribute::NoDerives {
+            ident, key_idents, ..
+        } => {
+            let ItemEnum {
+                vis,
+                generics,
+                variants,
+                ..
+            } = &input;
+            let variants = variants
+                .iter()
+                .filter(|v| key_idents.idents.iter().any(|k| *k == v.ident));
+            quote! {
+                #input
+                #vis enum #ident #generics {
+                    #(#variants),*
+                }
+            }
+        }
 
-    let ItemEnum {
-        vis,
-        generics,
-        variants,
-        ..
-    } = &input;
-
-    let variants = variants
-        .iter()
-        .filter(|v| attr_variants.iter().any(|av| *av == v.ident));
-    let tokens = quote! {
-        #input
-        #[derive(#attr_derive)]
-        #vis enum #attr_ident #generics {
-            #(#variants),*
+        Attribute::Derives {
+            ident,
+            key_idents,
+            derive_idents,
+            ..
+        } => {
+            let ItemEnum {
+                vis,
+                generics,
+                variants,
+                ..
+            } = &input;
+            let variants = variants
+                .iter()
+                .filter(|v| key_idents.idents.iter().any(|k| *k == v.ident));
+            let derive_idents = derive_idents.idents;
+            quote! {
+                #input
+                #[derive(#derive_idents)]
+                #vis enum #ident #generics {
+                    #(#variants),*
+                }
+            }
         }
     };
-
     tokens.into()
 }
