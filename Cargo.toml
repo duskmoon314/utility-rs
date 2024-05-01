@@ -14,7 +14,7 @@ description = "This crate use proc-macro to realize several utility types of Typ
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1.0"
+proc-macro2 = "1.0.81"
 quote = "1.0"
 syn = { version = "1.0", features = ["full"] }
 
