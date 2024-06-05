@@ -1,0 +1,5 @@
+error: Missing field `fields`
+ --> tests/omit/05-no-fields.rs:4:8
+  |
+4 | #[omit(arg(ident = Meta, derive(Debug, PartialEq)))]
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

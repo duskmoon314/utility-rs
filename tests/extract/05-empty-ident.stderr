@@ -1,0 +1,5 @@
+error: Unknown literal value ``
+ --> tests/extract/05-empty-ident.rs:5:13
+  |
+5 |     ident = "",
+  |             ^^

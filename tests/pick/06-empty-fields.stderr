@@ -1,0 +1,5 @@
+error: Too few items: Expected at least 1
+ --> tests/pick/06-empty-fields.rs:4:26
+  |
+4 | #[pick(arg(ident = Meta, fields(), derive(Debug, PartialEq)))]
+  |                          ^^^^^^^^

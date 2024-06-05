@@ -1,6 +1,6 @@
 [package]
 name = "utility-types"
-version = "0.0.2"
+version = "0.0.3"
 edition = "2021"
 authors = ["duskmoon (Campbell He) <kp.campbell.he@duskmoon314.com>"]
 license = "MIT"
@@ -9,14 +9,16 @@ keywords = ["macro", "proc-macro"]
 categories = ["development-tools"]
 repository = "https://github.com/duskmoon314/utility-rs.git"
 description = "This crate use proc-macro to realize several utility types of TypeScript"
+include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
 
 [lib]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = { version = "1.0", features = ["full"] }
+darling = "0.20.9"
+proc-macro2 = "1.0.85"
+quote = "1.0.36"
+syn = { version = "2.0.66", features = ["full"] }
 
 [dev-dependencies]
-trybuild = { version = "1.0", features = ["diff"] }
+trybuild = { version = "1.0.96", features = ["diff"] }

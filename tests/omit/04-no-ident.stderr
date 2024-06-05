@@ -1,0 +1,5 @@
+error: Missing field `ident`
+ --> tests/omit/04-no-ident.rs:4:8
+  |
+4 | #[omit(arg(fields(title, author), derive(Debug, PartialEq)))]
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

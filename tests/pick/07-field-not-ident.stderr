@@ -1,0 +1,5 @@
+error: Unexpected type `non ident`
+ --> tests/pick/07-field-not-ident.rs:4:33
+  |
+4 | #[pick(arg(ident = Meta, fields(foo::bar), derive(Debug, PartialEq)))]
+  |                                 ^^^^^^^^
