@@ -1,0 +1,5 @@
+error: Unexpected meta-item format `word`
+ --> tests/required/04-no-ident.rs:4:12
+  |
+4 | #[required(ident)]
+  |            ^^^^^

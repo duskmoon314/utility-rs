@@ -1,0 +1,5 @@
+error: Unexpected type `non ident`
+ --> tests/omit/07-field-not-ident.rs:4:33
+  |
+4 | #[omit(arg(ident = Meta, fields(foo::bar), derive(Debug, PartialEq)))]
+  |                                 ^^^^^^^^

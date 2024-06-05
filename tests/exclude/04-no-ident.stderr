@@ -1,0 +1,9 @@
+error: Missing field `ident`
+ --> tests/exclude/04-no-ident.rs:4:11
+  |
+4 |   #[exclude(arg(
+  |  ___________^
+5 | |     variants(Mercury, Venus, Earth, Mars),
+6 | |     derive(Debug, PartialEq, Clone, Copy)
+7 | | ))]
+  | |_^

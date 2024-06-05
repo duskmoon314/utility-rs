@@ -1,0 +1,9 @@
+error: Missing field `variants`
+ --> tests/extract/06-no-variants.rs:4:11
+  |
+4 |   #[extract(arg(
+  |  ___________^
+5 | |     ident = Terrestrial,
+6 | |     derive(Debug, PartialEq, Clone, Copy)
+7 | | ))]
+  | |_^

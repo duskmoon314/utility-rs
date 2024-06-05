@@ -1,0 +1,5 @@
+error: Missing field `fields`
+ --> tests/pick/05-no-fields.rs:4:8
+  |
+4 | #[pick(arg(ident = Meta, derive(Debug, PartialEq)))]
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

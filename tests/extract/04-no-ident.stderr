@@ -1,0 +1,9 @@
+error: Missing field `ident`
+ --> tests/extract/04-no-ident.rs:4:11
+  |
+4 |   #[extract(arg(
+  |  ___________^
+5 | |     variants(Mercury, Venus, Earth, Mars),
+6 | |     derive(Debug, PartialEq, Clone, Copy)
+7 | | ))]
+  | |_^

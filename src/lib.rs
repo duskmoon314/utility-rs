@@ -1,669 +1,316 @@
-//! # utility_types
-//!
-//! This crate use proc-macro to realize several utility types of TypeScript
-//!
-//! | macro            | TypeScript Utility Type                                                                                                     |
-//! | ---------------- | --------------------------------------------------------------------------------------------------------------------------- |
-//! | [macro@partial]  | [Partial\<Type\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#partialtype)                              |
-//! | [macro@required] | [Required\<Type\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#requiredtype)                            |
-//! | [macro@pick]     | [Pick\<Type, Keys\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#picktype-keys)                         |
-//! | [macro@omit]     | [Omit\<Type, Keys\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#omittype-keys)                         |
-//! | [macro@exclude]  | [Exclude\<Type, ExcludedUnion\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#excludetype-excludedunion) |
-//! | [macro@extract]  | [Extract\<Type, Union\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#extracttype-union)                 |
-//!
-
-#![allow(clippy::eval_order_dependence)]
+#![deny(missing_docs)]
+#![doc = include_str!("../README.md")]
 
 use proc_macro::TokenStream;
-use proc_macro2::Ident;
-use quote::{quote, ToTokens};
-use syn::parse::{Parse, ParseStream};
-use syn::punctuated::Punctuated;
-use syn::{
-    bracketed, parse_macro_input, token, Error, Fields, ItemEnum, ItemStruct, Result, Token, Type,
-};
 
-mod kw {
-    syn::custom_keyword!(Option);
-}
+/// [Exclude] macro implementation.
+mod exclude;
+/// [Extract] macro implementation.
+mod extract;
+/// [Omit] macro implementation.
+mod omit;
+/// [Partial] macro implementation.
+mod partial;
+/// [Pick] macro implementation.
+mod pick;
+/// [Required] macro implementation.
+mod required;
 
-struct IdentArray {
-    _bracket_token: token::Bracket,
-    idents: Punctuated<Ident, Token![,]>,
-}
+/// Utility functions and types.
+mod utils;
 
-impl Parse for IdentArray {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let content;
-        Ok(IdentArray {
-            _bracket_token: bracketed!(content in input),
-            idents: content.parse_terminated(Ident::parse)?,
-        })
-    }
-}
-
-enum Attribute {
-    NoDerives {
-        ident: Ident,
-        _comma: token::Comma,
-        key_idents: IdentArray,
-    },
-    Derives {
-        ident: Ident,
-        _comma_1: token::Comma,
-        key_idents: IdentArray,
-        _comma_2: token::Comma,
-        derive_idents: IdentArray,
-    },
-}
-
-impl Parse for Attribute {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let ident: Ident = input.parse()?;
-        let comma: token::Comma = input.parse()?;
-        let idents: IdentArray = input.parse()?;
-        let lookahead = input.lookahead1();
-        if lookahead.peek(token::Comma) {
-            Ok(Attribute::Derives {
-                ident,
-                _comma_1: comma,
-                key_idents: idents,
-                _comma_2: input.parse()?,
-                derive_idents: input.parse()?,
-            })
-        } else {
-            Ok(Attribute::NoDerives {
-                ident,
-                _comma: comma,
-                key_idents: idents,
-            })
-        }
-    }
-}
-
-struct TypeOption {
-    _option_token: kw::Option,
-    _lt_token: Token![<],
-    ty: Type,
-    _rt_token: Token![>],
-}
-
-impl Parse for TypeOption {
-    fn parse(input: ParseStream) -> Result<Self> {
-        Ok(TypeOption {
-            _option_token: input.parse()?,
-            _lt_token: input.parse()?,
-            ty: input.parse()?,
-            _rt_token: input.parse()?,
-        })
-    }
-}
-
-/// Constructs a struct with all properties of the original struct set to optional.
+/// Constructs a struct with all fields of the original struct set to optional.
 ///
-/// ### Example
+/// ## Example
 ///
-/// ```no_run
-/// # use utility_types::partial;
-/// #[partial(PartialArticle)]
-/// struct Article<T> {
+/// ```
+/// # use utility_types::Partial;
+/// #[derive(Partial)]
+/// #[partial(ident = PartialArticle, derive(Debug))]
+/// pub struct Article {
 ///     author: String,
 ///     content: String,
 ///     liked: usize,
-///     comments: T,
-///     link: Option<String>
+///     comments: String,
 /// }
 /// ```
 ///
-/// The code above will become this:
+/// The above code will generate the following struct:
 ///
 /// ```no_run
-/// struct Article<T> {
-///     author: String,
-///     content: String,
-///     liked: usize,
-///     comments: T,
-///     link: Option<String>
-/// }
-///
-/// struct PartialArticle<T> {
+/// #[derive(Debug)]
+/// pub struct PartialArticle {
 ///     author: Option<String>,
 ///     content: Option<String>,
 ///     liked: Option<usize>,
-///     comments: Option<T>,
-///     link: Option<Option<String>>
+///     comments: Option<String>,
 /// }
 /// ```
-#[proc_macro_attribute]
-pub fn partial(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_ident = parse_macro_input!(attr as Ident);
-    let input = parse_macro_input!(input as ItemStruct);
-
-    let tokens = match &input {
-        ItemStruct {
-            vis,
-            generics,
-            fields: Fields::Named(fields),
-            ..
-        } => {
-            let field_vis = fields.named.iter().map(|f| &f.vis);
-            let field_ident = fields.named.iter().map(|f| &f.ident);
-            let field_type = fields.named.iter().map(|f| &f.ty);
-            quote! {
-                #input
-                #vis struct #attr_ident #generics {
-                    #(#field_vis #field_ident: Option<#field_type>),*
-                }
-            }
-        }
-        ItemStruct {
-            vis,
-            generics,
-            fields: Fields::Unnamed(fields),
-            ..
-        } => {
-            let field_vis = fields.unnamed.iter().map(|f| &f.vis);
-            let field_type = fields.unnamed.iter().map(|f| &f.ty);
-            quote! {
-                #input
-                #vis struct #attr_ident #generics (#(#field_vis Option<#field_type>),*);
-            }
-        }
-        _ => Error::new_spanned(&input, "Must define on a struct with fields").to_compile_error(),
-    };
-
-    tokens.into()
+///
+/// Several trait implementations are also generated:
+/// - `From<Article>` for `PartialArticle`
+/// - `From<PartialArticle>` for `Article`
+///
+/// ## Attributes
+///
+/// ```ignore
+/// #[derive(Partial)]
+/// #[partial(
+///     ident = <IDENT>, // The identifier of the generated struct
+///     [derive(<DERIVE>, ...)], // Derive attributes for the generated struct
+/// )]
+/// pub struct BasedStruct {
+///     #[partial(
+///         [default = <DEFAULT>], // The default value of the field in the generated From impl
+///     )]
+///     field: FieldType,
+/// }
+/// ```
+#[proc_macro_derive(Partial, attributes(partial))]
+pub fn partial(input: TokenStream) -> TokenStream {
+    partial::partial(input)
 }
 
-/// Constructs a struct consisting of all properties of the original struct set to required. The opposite of `partial`.
+/// Constructs a struct with all fields of the original struct set to required.
 ///
-/// ### Example
+/// ## Example
 ///
-/// ```no_run
-/// # use utility_types::required;
-/// #[required(RequiredArticle)]
-/// struct Article<T> {
+/// ```
+/// # use utility_types::Required;
+/// #[derive(Required)]
+/// #[required(ident = RequiredArticle, derive(Debug))]
+/// pub struct Article {
 ///     author: String,
-///     content: String,
-///     liked: usize,
-///     comments: T,
-///     link: Option<String>
+///     content: Option<String>,
 /// }
 /// ```
 ///
-/// The code above will become this:
+/// The above code will generate the following struct:
 ///
-/// ```no_run
-/// struct Article<T> {
+/// ```
+/// #[derive(Debug)]
+/// pub struct RequiredArticle {
 ///     author: String,
 ///     content: String,
-///     liked: usize,
-///     comments: T,
-///     link: Option<String>
-/// }
-///
-/// struct RequiredArticle<T> {
-///     author: String,
-///     content: String,
-///     liked: usize,
-///     comments: T,
-///     link: String
 /// }
 /// ```
 ///
-/// ### Notice
+/// ## Attributes
 ///
-/// Currently, only one level of `Option` is removed.
-#[proc_macro_attribute]
-pub fn required(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_ident = parse_macro_input!(attr as Ident);
-    let input = parse_macro_input!(input as ItemStruct);
-    let tokens = match &input {
-        ItemStruct {
-            vis,
-            generics,
-            fields: Fields::Named(fields),
-            ..
-        } => {
-            let field_vis = fields.named.iter().map(|f| &f.vis);
-            let field_ident = fields.named.iter().map(|f| &f.ident);
-            let field_type = fields.named.iter().map(|f| match &f.ty {
-                Type::Path(type_path) => {
-                    let parse_option = syn::parse::<TypeOption>(TokenStream::from(
-                        type_path.path.segments.to_token_stream(),
-                    ));
-                    match parse_option {
-                        Ok(option) => option.ty,
-                        _ => f.ty.clone(),
-                    }
-                }
-                _ => f.ty.clone(),
-            });
-            quote! {
-                #input
-                #vis struct #attr_ident #generics {
-                    #(#field_vis #field_ident: #field_type),*
-                }
-            }
-        }
-        ItemStruct {
-            vis,
-            generics,
-            fields: Fields::Unnamed(fields),
-            ..
-        } => {
-            let field_vis = fields.unnamed.iter().map(|f| &f.vis);
-            let field_type = fields.unnamed.iter().map(|f| &f.ty);
-            quote! {
-                #input
-                #vis struct #attr_ident #generics (#(#field_vis #field_type),*);
-            }
-        }
-        _ => Error::new_spanned(&input, "Must define on a struct with fields").to_compile_error(),
-    };
-
-    tokens.into()
+/// ```ignore
+/// #[derive(Required)]
+/// #[required(
+///     ident = <IDENT>, // The identifier of the generated struct
+///     [derive(<DERIVE>, ...)], // Derive attributes for the generated struct
+/// )]
+/// pub struct BasedStruct {
+///     field: FieldType,
+/// }
+/// ```
+#[proc_macro_derive(Required, attributes(required))]
+pub fn required(input: TokenStream) -> TokenStream {
+    required::required(input)
 }
 
 /// Constructs a struct by picking the set of fields from the original struct.
 ///
-/// ### Example
+/// ## Example
 ///
-/// ```no_run
-/// # use utility_types::pick;
-/// #[pick(ContentComments, [content, comments], [Debug])]
-/// struct Article<T> {
+/// ```ignore
+/// # use utility_types::Pick;
+/// #[derive(Pick)]
+/// #[pick(arg(ident = AuthorContent, fields(author, content), derive(Debug)))]
+/// #[pick(arg(ident = LikedComments, fields(liked, comments)))]
+/// pub struct Article {
 ///     author: String,
 ///     content: String,
 ///     liked: usize,
-///     comments: T,
-///     link: Option<String>
+///     comments: String,
 /// }
 /// ```
 ///
-/// The code above will become this:
+/// The above code will generate the following structs:
 ///
-/// ```no_run
-/// struct Article<T> {
-///     author: String,
-///     content: String,
-///     liked: usize,
-///     comments: T,
-///     link: Option<String>
-/// }
-///
+/// ```
 /// #[derive(Debug)]
-/// struct ContentComments<T> {
+/// pub struct AuthorContent {
+///     author: String,
 ///     content: String,
-///     comments: T,
+/// }
+///
+/// pub struct LikedComments {
+///     liked: usize,
+///     comments: String,
 /// }
 /// ```
 ///
-/// ### Notice
+/// Several trait implementations are also generated:
+/// - `From<Article>` for `AuthorContent`
+/// - `From<Article>` for `LikedComments`
 ///
-/// Currently, generics are not analyzed. So rustc will complain if the field with generic is not included in the generated struct.
-#[proc_macro_attribute]
-pub fn pick(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_input = parse_macro_input!(attr as Attribute);
-    let input = parse_macro_input!(input as ItemStruct);
-
-    let tokens = match attr_input {
-        Attribute::NoDerives {
-            ident, key_idents, ..
-        } => match &input {
-            ItemStruct {
-                vis,
-                generics,
-                fields: Fields::Named(fields),
-                ..
-            } => {
-                let fields = fields.named.iter().filter(|f| {
-                    key_idents
-                        .idents
-                        .iter()
-                        .any(|k| *k == *f.ident.as_ref().unwrap())
-                });
-                quote! {
-                    #input
-                    #vis struct #ident #generics {
-                        #(#fields),*
-                    }
-                }
-            }
-            _ => Error::new_spanned(&input, "Must define on a struct with named field")
-                .to_compile_error(),
-        },
-        Attribute::Derives {
-            ident,
-            key_idents,
-            derive_idents,
-            ..
-        } => match &input {
-            ItemStruct {
-                vis,
-                generics,
-                fields: Fields::Named(fields),
-                ..
-            } => {
-                let fields = fields.named.iter().filter(|f| {
-                    key_idents
-                        .idents
-                        .iter()
-                        .any(|k| *k == *f.ident.as_ref().unwrap())
-                });
-                let derive_idents = derive_idents.idents;
-                quote! {
-                    #input
-                    #[derive(#derive_idents)]
-                    #vis struct #ident #generics {
-                        #(#fields),*
-                    }
-                }
-            }
-            _ => Error::new_spanned(&input, "Must define on a struct with named field")
-                .to_compile_error(),
-        },
-    };
-    tokens.into()
+/// ## Attributes
+///
+/// ```ignore
+/// # use utility_types::Pick;
+/// #[derive(Pick)]
+/// #[pick(
+///     arg(
+///         ident = <IDENT>, // The identifier of the generated struct
+///         fields(<FIELD>, ...), // The fields to pick from the original struct
+///         [derive(<DERIVE>, ...)], // Derive attributes for the generated struct
+///     ),
+/// )]
+/// pub struct BasedStruct {
+///     field: FieldType,
+/// }
+#[proc_macro_derive(Pick, attributes(pick))]
+pub fn pick(input: TokenStream) -> TokenStream {
+    pick::pick(input)
 }
 
-/// Constructs a struct by picking fields which not in the set from the original struct.
+/// Constructs a struct by omitting the set of fields from the original struct.
 ///
-/// ### Example
+/// ## Example
 ///
-/// ```no_run
-/// # use utility_types::omit;
-/// #[omit(AuthorLikedComments, [content, link], [Debug])]
-/// struct Article<T> {
+/// ```
+/// # use utility_types::Omit;
+/// #[derive(Omit)]
+/// #[omit(arg(ident = OmitAuthorContent, fields(author, content), derive(Debug)))]
+/// #[omit(arg(ident = OmitLikedComments, fields(liked, comments)))]
+/// pub struct Article {
 ///     author: String,
 ///     content: String,
 ///     liked: usize,
-///     comments: T,
-///     link: Option<String>
+///     comments: String,
 /// }
 /// ```
 ///
-/// The code above will become this:
+/// The above code will generate the following structs:
 ///
-/// ```no_run
-/// struct Article<T> {
+/// ```
+/// #[derive(Debug)]
+/// pub struct OmitAuthorContent {
+///     liked: usize,
+///     comments: String,
+/// }
+///
+/// pub struct OmitLikedComments {
 ///     author: String,
 ///     content: String,
-///     liked: usize,
-///     comments: T,
-///     link: Option<String>
-/// }
-///
-/// #[derive(Debug)]
-/// struct AuthorLikedComments<T> {
-///     author: String,
-///     liked: usize,
-///     comments: T,
 /// }
 /// ```
 ///
-/// ### Notice
+/// Several trait implementations are also generated:
 ///
-/// Currently, generics are not analyzed. So rustc will complain if the field with generic is not included in the generated struct.
-#[proc_macro_attribute]
-pub fn omit(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_input = parse_macro_input!(attr as Attribute);
-    let input = parse_macro_input!(input as ItemStruct);
-
-    let tokens = match attr_input {
-        Attribute::NoDerives {
-            ident, key_idents, ..
-        } => match &input {
-            ItemStruct {
-                vis,
-                generics,
-                fields: Fields::Named(fields),
-                ..
-            } => {
-                let fields = fields.named.iter().filter(|f| {
-                    key_idents
-                        .idents
-                        .iter()
-                        .all(|k| *k != *f.ident.as_ref().unwrap())
-                });
-                quote! {
-                    #input
-                    #vis struct #ident #generics {
-                        #(#fields),*
-                    }
-                }
-            }
-            _ => Error::new_spanned(&input, "Must define on a struct with named field")
-                .to_compile_error(),
-        },
-        Attribute::Derives {
-            ident,
-            key_idents,
-            derive_idents,
-            ..
-        } => match &input {
-            ItemStruct {
-                vis,
-                generics,
-                fields: Fields::Named(fields),
-                ..
-            } => {
-                let fields = fields.named.iter().filter(|f| {
-                    key_idents
-                        .idents
-                        .iter()
-                        .all(|k| *k != *f.ident.as_ref().unwrap())
-                });
-                let derive_idents = derive_idents.idents;
-                quote! {
-                    #input
-                    #[derive(#derive_idents)]
-                    #vis struct #ident #generics {
-                        #(#fields),*
-                    }
-                }
-            }
-            _ => Error::new_spanned(&input, "Must define on a struct with named field")
-                .to_compile_error(),
-        },
-    };
-    tokens.into()
+/// - `From<Article>` for `OmitAuthorContent`
+/// - `From<Article>` for `OmitLikedComments`
+///
+/// ## Attributes
+///
+/// ```ignore
+/// #[derive(Omit)]
+/// #[omit(
+///     arg(
+///         ident = <IDENT>, // The identifier of the generated struct
+///         fields(<FIELD>, ...), // The fields to omit from the original struct
+///         [derive(<DERIVE>, ...)], // Derive attributes for the generated struct
+///     ),
+/// )]
+/// pub struct BasedStruct {
+///     field: FieldType,
+/// }
+/// ```
+#[proc_macro_derive(Omit, attributes(omit))]
+pub fn omit(input: TokenStream) -> TokenStream {
+    omit::omit(input)
 }
 
-/// Constructs an enum by excluding variants in the set from the original enum.
+/// Constructs an enum by extracting the set of variants from the original enum.
 ///
-/// ### Example
+/// ## Example
 ///
-/// ```no_run
-/// # use utility_types::exclude;
-/// #[exclude(Terra, [Jupiter, Saturn, Uranus, Neptune], [Debug])]
-/// enum Planet<T> {
-///     Mercury(T),
-///     Venus(T),
-///     Earth(T),
-///     Mars(T),
-///     Jupiter(T),
-///     Saturn(T),
-///     Uranus(T),
-///     Neptune(T),
+/// ```
+/// # use utility_types::Extract;
+/// #[derive(Extract)]
+/// #[extract(arg(ident = ExtractMercury, variants(Mercury)))]
+/// pub enum Planet {
+///     Mercury,
+///     Venus,
+///     Earth,
+///     Mars,
 /// }
 /// ```
 ///
-/// The code above will become this:
+/// The above code will generate the following enum:
 ///
-/// ```no_run
-/// enum Planet<T> {
-///     Mercury(T),
-///     Venus(T),
-///     Earth(T),
-///     Mars(T),
-///     Jupiter(T),
-///     Saturn(T),
-///     Uranus(T),
-///     Neptune(T),
-/// }
-///
-/// #[derive(Debug)]
-/// enum Terra<T> {
-///     Mercury(T),
-///     Venus(T),
-///     Earth(T),
-///     Mars(T),
+/// ```
+/// pub enum ExtractMercury {
+///     Mercury,
 /// }
 /// ```
 ///
-/// ### Notice
+/// ## Attributes
 ///
-/// Currently, generics are not analyzed. So rustc will complain if the field with generic is not included in the generated enum.
-#[proc_macro_attribute]
-pub fn exclude(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_input = parse_macro_input!(attr as Attribute);
-    let input = parse_macro_input!(input as ItemEnum);
-
-    let tokens = match attr_input {
-        Attribute::NoDerives {
-            ident, key_idents, ..
-        } => {
-            let ItemEnum {
-                vis,
-                generics,
-                variants,
-                ..
-            } = &input;
-            let variants = variants
-                .iter()
-                .filter(|v| key_idents.idents.iter().all(|k| *k != v.ident));
-            quote! {
-                #input
-                #vis enum #ident #generics {
-                    #(#variants),*
-                }
-            }
-        }
-
-        Attribute::Derives {
-            ident,
-            key_idents,
-            derive_idents,
-            ..
-        } => {
-            let ItemEnum {
-                vis,
-                generics,
-                variants,
-                ..
-            } = &input;
-            let variants = variants
-                .iter()
-                .filter(|v| key_idents.idents.iter().all(|k| *k != v.ident));
-            let derive_idents = derive_idents.idents;
-            quote! {
-                #input
-                #[derive(#derive_idents)]
-                #vis enum #ident #generics {
-                    #(#variants),*
-                }
-            }
-        }
-    };
-    tokens.into()
+/// ```ignore
+/// #[derive(Extract)]
+/// #[extract(
+///     arg(
+///         ident = <IDENT>, // The identifier of the generated enum
+///         variants(<VARIANT>, ...), // The variants to extract from the original enum
+///         [derive(<DERIVE>, ...)], // Derive attributes for the generated enum
+///     ),
+/// )]
+/// pub enum BasedEnum {
+///     variant: VariantType,
+/// }
+/// ```
+#[proc_macro_derive(Extract, attributes(extract))]
+pub fn extract(input: TokenStream) -> TokenStream {
+    extract::extract(input)
 }
 
-/// Constructs an enum by extracting variants in the set from the original enum.
+/// Constructs an enum by excluding the set of variants from the original enum.
 ///
-/// ### Example
+/// ## Example
 ///
-/// ```no_run
-/// # use utility_types::extract;
-/// #[extract(Terra, [Mercury, Venus, Earth, Mars], [Debug])]
-/// enum Planet<T> {
-///     Mercury(T),
-///     Venus(T),
-///     Earth(T),
-///     Mars(T),
-///     Jupiter(T),
-///     Saturn(T),
-///     Uranus(T),
-///     Neptune(T),
+/// ```
+/// # use utility_types::Exclude;
+/// #[derive(Exclude)]
+/// #[exclude(arg(ident = ExcludeMercury, variants(Mercury)))]
+/// pub enum Planet {
+///     Mercury,
+///     Venus,
+///     Earth,
+///     Mars,
 /// }
 /// ```
 ///
-/// The code above will become this:
+/// The above code will generate the following enum:
 ///
-/// ```no_run
-/// enum Planet<T> {
-///     Mercury(T),
-///     Venus(T),
-///     Earth(T),
-///     Mars(T),
-///     Jupiter(T),
-///     Saturn(T),
-///     Uranus(T),
-///     Neptune(T),
-/// }
-///
-/// #[derive(Debug)]
-/// enum Terra<T> {
-///     Mercury(T),
-///     Venus(T),
-///     Earth(T),
-///     Mars(T),
+/// ```
+/// pub enum ExcludeMercury {
+///     Venus,
+///     Earth,
+///     Mars,
 /// }
 /// ```
 ///
-/// ### Notice
+/// ## Attributes
 ///
-/// Currently, generics are not analyzed. So rustc will complain if the field with generic is not included in the generated enum.
-#[proc_macro_attribute]
-pub fn extract(attr: TokenStream, input: TokenStream) -> TokenStream {
-    let attr_input = parse_macro_input!(attr as Attribute);
-    let input = parse_macro_input!(input as ItemEnum);
-
-    let tokens = match attr_input {
-        Attribute::NoDerives {
-            ident, key_idents, ..
-        } => {
-            let ItemEnum {
-                vis,
-                generics,
-                variants,
-                ..
-            } = &input;
-            let variants = variants
-                .iter()
-                .filter(|v| key_idents.idents.iter().any(|k| *k == v.ident));
-            quote! {
-                #input
-                #vis enum #ident #generics {
-                    #(#variants),*
-                }
-            }
-        }
-
-        Attribute::Derives {
-            ident,
-            key_idents,
-            derive_idents,
-            ..
-        } => {
-            let ItemEnum {
-                vis,
-                generics,
-                variants,
-                ..
-            } = &input;
-            let variants = variants
-                .iter()
-                .filter(|v| key_idents.idents.iter().any(|k| *k == v.ident));
-            let derive_idents = derive_idents.idents;
-            quote! {
-                #input
-                #[derive(#derive_idents)]
-                #vis enum #ident #generics {
-                    #(#variants),*
-                }
-            }
-        }
-    };
-    tokens.into()
+/// ```ignore
+/// #[derive(Exclude)]
+/// #[exclude(
+///     arg(
+///         ident = <IDENT>, // The identifier of the generated enum
+///         variants(<VARIANT>, ...), // The variants to exclude from the original enum
+///         [derive(<DERIVE>, ...)], // Derive attributes for the generated enum
+///     ),
+/// )]
+/// pub enum BasedEnum {
+///     variant: VariantType,
+/// }
+/// ```
+#[proc_macro_derive(Exclude, attributes(exclude))]
+pub fn exclude(input: TokenStream) -> TokenStream {
+    exclude::exclude(input)
 }

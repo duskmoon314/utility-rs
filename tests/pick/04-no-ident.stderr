@@ -1,0 +1,5 @@
+error: Missing field `ident`
+ --> tests/pick/04-no-ident.rs:4:8
+  |
+4 | #[pick(arg(fields(title, author), derive(Debug, PartialEq)))]
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

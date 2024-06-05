@@ -1,0 +1,5 @@
+error: Unexpected meta-item format `word`
+ --> tests/partial/04-no-ident.rs:4:11
+  |
+4 | #[partial(ident)]
+  |           ^^^^^
