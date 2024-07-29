@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use darling::FromMeta;
-use syn::{Ident, Meta};
+use syn::{Ident, Meta, Path};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct IdentList(Vec<Ident>);
@@ -47,4 +47,10 @@ impl FromMeta for IdentList {
 
         Ok(Self::new(values))
     }
+}
+
+pub fn default_forward_attrs_filter(path: &Path) -> bool {
+    ["allow", "cfg", "doc"]
+        .iter()
+        .any(|attr| path.is_ident(attr))
 }

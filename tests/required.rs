@@ -10,4 +10,5 @@ fn required() {
     t.compile_fail("tests/required/04-no-ident.rs");
     t.pass("tests/required/05-ident-str.rs");
     t.pass("tests/required/06-derive-empty.rs");
+    t.pass("tests/required/07-forward-attrs.rs");
 }

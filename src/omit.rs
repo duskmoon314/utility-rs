@@ -7,7 +7,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Attribute, Generics, Ident, Type, Visibility};
 
-use crate::utils::IdentList;
+use crate::utils::{default_forward_attrs_filter, IdentList};
 
 #[derive(Debug, FromMeta)]
 struct OmitArgs {
@@ -16,6 +16,8 @@ struct OmitArgs {
     fields: IdentList,
 
     derive: Option<PathList>,
+
+    forward_attrs: Option<PathList>,
 }
 
 #[derive(Debug)]
@@ -44,7 +46,7 @@ impl FromMeta for OmitArgsList {
 }
 
 #[derive(Debug, FromField)]
-#[darling(attributes(omit), forward_attrs(allow, doc, cfg))]
+#[darling(attributes(omit), forward_attrs)]
 struct OmitField {
     ident: Option<Ident>,
 
@@ -53,14 +55,12 @@ struct OmitField {
     ty: Type,
 
     attrs: Vec<Attribute>,
+
+    forward_attrs: Option<PathList>,
 }
 
 #[derive(Debug, FromDeriveInput)]
-#[darling(
-    attributes(omit),
-    forward_attrs(allow, doc, cfg),
-    supports(struct_named)
-)]
+#[darling(attributes(omit), forward_attrs, supports(struct_named))]
 struct OmitInput {
     ident: Ident,
 
@@ -70,6 +70,12 @@ struct OmitInput {
 
     data: Data<Ignored, OmitField>,
 
+    attrs: Vec<Attribute>,
+
+    /// The filter for attributes to forward to the generated struct
+    forward_attrs: Option<PathList>,
+
+    /// Args for each generated struct
     #[darling(flatten)]
     args: OmitArgsList,
 }
@@ -90,15 +96,18 @@ pub fn omit(input: TokenStream) -> TokenStream {
     let fields = input.data.take_struct().unwrap();
 
     let omits = input.args.iter().map(|arg| {
-        let derive_attr = match &arg.derive {
-            Some(derives) => {
-                let derives = derives.iter();
-                quote! {
-                    #[derive(#(#derives),*)]
-                }
+        let derive_attr = arg.derive.as_ref().map(|derives| {
+            let derives = derives.iter();
+            quote! {
+                #[derive(#(#derives),*)]
             }
-            None => quote! {},
-        };
+        });
+
+        let forward_attrs = arg.forward_attrs.as_ref().or(input.forward_attrs.as_ref());
+        let forward_attrs = input.attrs.iter().filter(|attr| match forward_attrs {
+            Some(filter) => filter.contains(attr.path()),
+            None => default_forward_attrs_filter(attr.path()),
+        });
 
         let omit_ident = &arg.ident;
 
@@ -113,13 +122,22 @@ pub fn omit(input: TokenStream) -> TokenStream {
                 return;
             }
 
-            let attrs = &field.attrs;
+            let forward_attrs = field
+                .forward_attrs
+                .as_ref()
+                .or(arg.forward_attrs.as_ref())
+                .or(input.forward_attrs.as_ref());
+            let forward_attrs = field.attrs.iter().filter(|attr| match forward_attrs {
+                Some(filter) => filter.contains(attr.path()),
+                None => default_forward_attrs_filter(attr.path()),
+            });
+
             let vis = &field.vis;
             let ty = &field.ty;
 
             field_idents.push(ident);
             field_declares.push(quote! {
-                #(#attrs)*
+                #(#forward_attrs)*
                 #vis #ident: #ty,
             });
         });
@@ -128,6 +146,7 @@ pub fn omit(input: TokenStream) -> TokenStream {
         // It may be better to check all fields for generics
         quote! {
             #derive_attr
+            #(#forward_attrs)*
             #vis struct #omit_ident #generics {
                 #(#field_declares)*
             }

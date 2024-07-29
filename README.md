@@ -60,6 +60,33 @@ Some useful traits are also generated:
 - `From<Foo>` for `PartialFoo`, `PickAB`, `OmitCD`
 - `From<PartialFoo>` for `Foo`
 
+### Forwarding Attributes
+
+To use this crate with other crates that need attributes, you can use the `forward_attrs` attribute to control which attributes are forwarded to the generated struct or enum.
+
+```rust
+use serde::{Deserialize, Serialize};
+use utility_types::Omit;
+
+#[derive(Debug, PartialEq, Serialize, Deserialize, Omit)]
+#[omit(arg(ident = OmitCD, fields(c, d), derive(Debug, PartialEq, Serialize, Deserialize), forward_attrs(serde)))]
+#[serde(rename_all = "UPPERCASE")]
+pub struct Foo {
+    a: u8,
+    b: Option<u8>,
+    c: Option<Vec<u8>>,
+}
+
+let omit_cd: OmitCD = serde_json::from_str(r#"{"A": 1, "B": 2}"#).unwrap();
+assert_eq!(omit_cd, OmitCD { a: 1, b: Some(2) });
+```
+
+If the `forward_attrs` attribute is not specified, default attributes are forwarded:
+
+- `allow`
+- `cfg`
+- `doc`
+
 ## Known Issue
 
 Currently I don't analyze which generic is used in the generated struct or enum. So rustc will complain if the field with generic is not included in the generated struct or enum.

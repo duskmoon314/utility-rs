@@ -8,15 +8,19 @@ use syn::{
     Type, TypePath, Visibility,
 };
 
+use crate::utils::default_forward_attrs_filter;
+
 #[derive(Debug, FromMeta)]
 struct RequiredArgs {
     ident: Ident,
 
     derive: Option<PathList>,
+
+    forward_attrs: Option<PathList>,
 }
 
 #[derive(Debug, FromField)]
-#[darling(attributes(required), forward_attrs(allow, doc, cfg))]
+#[darling(attributes(required), forward_attrs)]
 struct RequiredField {
     ident: Option<Ident>,
 
@@ -25,12 +29,14 @@ struct RequiredField {
     ty: Type,
 
     attrs: Vec<Attribute>,
+
+    forward_attrs: Option<PathList>,
 }
 
 #[derive(Debug, FromDeriveInput)]
 #[darling(
     attributes(required),
-    forward_attrs(allow, doc, cfg),
+    forward_attrs,
     supports(struct_named, struct_tuple)
 )]
 struct RequiredInput {
@@ -41,6 +47,8 @@ struct RequiredInput {
     generics: Generics,
 
     data: Data<Ignored, RequiredField>,
+
+    attrs: Vec<Attribute>,
 
     #[darling(flatten)]
     args: RequiredArgs,
@@ -56,15 +64,21 @@ pub fn required(input: TokenStream) -> TokenStream {
         }
     };
 
-    let derive_attr = match input.args.derive {
-        Some(derives) => {
-            let derives = derives.iter();
-            quote! {
-                #[derive(#(#derives),*)]
-            }
+    let derive_attr = input.args.derive.as_ref().map(|derives| {
+        let derives = derives.iter();
+        quote! {
+            #[derive(#(#derives),*)]
         }
-        None => quote! {},
-    };
+    });
+
+    let forward_attrs = input
+        .attrs
+        .iter()
+        .filter(|attr| match input.args.forward_attrs.as_ref() {
+            Some(filter) => filter.contains(attr.path()),
+            None => default_forward_attrs_filter(attr.path()),
+        });
+
     let vis = input.vis;
     let _ident = input.ident;
     let required_ident = input.args.ident;
@@ -77,7 +91,16 @@ pub fn required(input: TokenStream) -> TokenStream {
     fields.fields.iter().for_each(|field| {
         let vis = &field.vis;
         let ident = field.ident.as_ref().unwrap();
-        let attrs = &field.attrs;
+
+        let forward_attrs = field
+            .forward_attrs
+            .as_ref()
+            .or(input.args.forward_attrs.as_ref());
+        let forward_attrs = field.attrs.iter().filter(|attr| match forward_attrs {
+            Some(filter) => filter.contains(attr.path()),
+            None => default_forward_attrs_filter(attr.path()),
+        });
+
         let ty = &field.ty;
 
         // Check if the field is optional
@@ -113,7 +136,7 @@ pub fn required(input: TokenStream) -> TokenStream {
 
         field_idents.push(ident.clone());
         field_declares.push(quote! {
-            #(#attrs)*
+            #(#forward_attrs)*
             #vis #ident: #ty
         });
     });
@@ -121,6 +144,7 @@ pub fn required(input: TokenStream) -> TokenStream {
     // TODO: Implement From<RequiredStruct> for OriginalStruct
     quote! {
         #derive_attr
+        #(#forward_attrs)*
         #vis struct #required_ident #generics {
             #(#field_declares),*
         }

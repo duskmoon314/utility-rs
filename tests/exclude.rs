@@ -12,4 +12,5 @@ fn exclude() {
     t.compile_fail("tests/exclude/06-no-variants.rs");
     t.compile_fail("tests/exclude/07-empty-variants.rs");
     t.pass("tests/exclude/08-variant-not-exist.rs");
+    t.pass("tests/exclude/09-forward-attrs.rs");
 }
