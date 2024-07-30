@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use darling::ast::{Data, Fields, Style};
 use darling::util::{Ignored, PathList};
 use darling::{FromDeriveInput, FromMeta, FromVariant};
@@ -7,7 +5,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Attribute, Field, Generics, Ident, Visibility};
 
-use crate::utils::{default_forward_attrs_filter, IdentList};
+use crate::utils::{filter_forward_attrs, ForwardAttrsFilter, IdentList};
 
 #[derive(Debug, FromMeta)]
 struct ExcludeArgs {
@@ -17,32 +15,8 @@ struct ExcludeArgs {
 
     derive: Option<PathList>,
 
-    forward_attrs: Option<PathList>,
-}
-
-#[derive(Debug)]
-struct ExcludeArgsList(Vec<ExcludeArgs>);
-
-impl Deref for ExcludeArgsList {
-    type Target = Vec<ExcludeArgs>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl FromMeta for ExcludeArgsList {
-    fn from_list(items: &[darling::ast::NestedMeta]) -> darling::Result<Self> {
-        let values = items
-            .iter()
-            .map(|item| match item {
-                darling::ast::NestedMeta::Meta(meta) => ExcludeArgs::from_meta(meta),
-                _ => Err(darling::Error::unexpected_type("non meta").with_span(item)),
-            })
-            .collect::<darling::Result<Vec<ExcludeArgs>>>()?;
-
-        Ok(Self(values))
-    }
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromVariant)]
@@ -56,7 +30,8 @@ struct ExcludeVariant {
 
     attrs: Vec<Attribute>,
 
-    forward_attrs: Option<PathList>,
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromDeriveInput)]
@@ -73,11 +48,12 @@ struct ExcludeInput {
     attrs: Vec<Attribute>,
 
     /// The filter for attributes to forward to the generated enum.
-    forward_attrs: Option<PathList>,
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 
     /// Args for each generated enum.
-    #[darling(flatten)]
-    args: ExcludeArgsList,
+    #[darling(multiple, rename = "arg")]
+    args: Vec<ExcludeArgs>,
 }
 
 pub fn exclude(input: TokenStream) -> TokenStream {
@@ -103,11 +79,10 @@ pub fn exclude(input: TokenStream) -> TokenStream {
             }
         });
 
-        let forward_attrs = arg.forward_attrs.as_ref().or(input.forward_attrs.as_ref());
-        let forward_attrs = input.attrs.iter().filter(|attr| match forward_attrs {
-            Some(filter) => filter.contains(attr.path()),
-            None => default_forward_attrs_filter(attr.path()),
-        });
+        let forward_attrs = filter_forward_attrs(
+            input.attrs.iter(),
+            &arg.forward_attrs + &input.forward_attrs,
+        );
 
         let exclude_ident = &arg.ident;
 
@@ -123,15 +98,10 @@ pub fn exclude(input: TokenStream) -> TokenStream {
                 return;
             }
 
-            let forward_attrs = variant
-                .forward_attrs
-                .as_ref()
-                .or(arg.forward_attrs.as_ref())
-                .or(input.forward_attrs.as_ref());
-            let forward_attrs = variant.attrs.iter().filter(|attr| match forward_attrs {
-                Some(filter) => filter.contains(attr.path()),
-                None => default_forward_attrs_filter(attr.path()),
-            });
+            let forward_attrs = filter_forward_attrs(
+                variant.attrs.iter(),
+                &variant.forward_attrs + &arg.forward_attrs + &input.forward_attrs,
+            );
 
             let fields = &variant.fields;
             let discriminant = &variant.discriminant;

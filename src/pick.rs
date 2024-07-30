@@ -7,7 +7,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Attribute, Generics, Ident, Type, Visibility};
 
-use crate::utils::{default_forward_attrs_filter, IdentList};
+use crate::utils::{filter_forward_attrs, ForwardAttrsFilter, IdentList};
 
 #[derive(Debug, FromMeta)]
 struct PickArgs {
@@ -17,7 +17,8 @@ struct PickArgs {
 
     derive: Option<PathList>,
 
-    forward_attrs: Option<PathList>,
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug)]
@@ -56,7 +57,8 @@ struct PickField {
 
     attrs: Vec<Attribute>,
 
-    forward_attrs: Option<PathList>,
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromDeriveInput)]
@@ -73,7 +75,8 @@ struct PickInput {
     attrs: Vec<Attribute>,
 
     /// The filter for attributes to forward to the generated struct
-    forward_attrs: Option<PathList>,
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 
     #[darling(flatten)]
     args: PickArgsList,
@@ -102,11 +105,10 @@ pub fn pick(input: TokenStream) -> TokenStream {
             }
         });
 
-        let forward_attrs = arg.forward_attrs.as_ref().or(input.forward_attrs.as_ref());
-        let forward_attrs = input.attrs.iter().filter(|attr| match forward_attrs {
-            Some(filter) => filter.contains(attr.path()),
-            None => default_forward_attrs_filter(attr.path()),
-        });
+        let forward_attrs = filter_forward_attrs(
+            input.attrs.iter(),
+            &arg.forward_attrs + &input.forward_attrs,
+        );
 
         let pick_ident = &arg.ident;
 
@@ -121,15 +123,10 @@ pub fn pick(input: TokenStream) -> TokenStream {
                 return;
             }
 
-            let forward_attrs = field
-                .forward_attrs
-                .as_ref()
-                .or(arg.forward_attrs.as_ref())
-                .or(input.forward_attrs.as_ref());
-            let forward_attrs = field.attrs.iter().filter(|attr| match forward_attrs {
-                Some(filter) => filter.contains(attr.path()),
-                None => default_forward_attrs_filter(attr.path()),
-            });
+            let forward_attrs = filter_forward_attrs(
+                field.attrs.iter(),
+                &field.forward_attrs + &arg.forward_attrs + &input.forward_attrs,
+            );
 
             let vis = &field.vis;
             let ty = &field.ty;

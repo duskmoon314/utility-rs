@@ -5,7 +5,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Attribute, Generics, Ident, Type, Visibility};
 
-use crate::utils::default_forward_attrs_filter;
+use crate::utils::{filter_forward_attrs, ForwardAttrsFilter};
 
 #[derive(Debug, FromMeta)]
 struct PartialArgs {
@@ -13,7 +13,8 @@ struct PartialArgs {
 
     derive: Option<PathList>,
 
-    forward_attrs: Option<PathList>,
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromField)]
@@ -29,7 +30,8 @@ struct PartialField {
 
     default: Option<syn::Expr>,
 
-    forward_attrs: Option<PathList>,
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromDeriveInput)]
@@ -70,13 +72,7 @@ pub fn partial(input: TokenStream) -> TokenStream {
         }
     });
 
-    let forward_attrs = input
-        .attrs
-        .iter()
-        .filter(|attr| match input.args.forward_attrs.as_ref() {
-            Some(filter) => filter.contains(attr.path()),
-            None => default_forward_attrs_filter(attr.path()),
-        });
+    let forward_attrs = filter_forward_attrs(input.attrs.iter(), &input.args.forward_attrs);
 
     let vis = input.vis;
     let ident = input.ident;
@@ -92,14 +88,10 @@ pub fn partial(input: TokenStream) -> TokenStream {
         let vis = &field.vis;
         let ident = field.ident.as_ref().unwrap();
 
-        let forward_attrs = field
-            .forward_attrs
-            .as_ref()
-            .or(input.args.forward_attrs.as_ref());
-        let forward_attrs = field.attrs.iter().filter(|attr| match forward_attrs {
-            Some(filter) => filter.contains(attr.path()),
-            None => default_forward_attrs_filter(attr.path()),
-        });
+        let forward_attrs = filter_forward_attrs(
+            field.attrs.iter(),
+            &field.forward_attrs + &input.args.forward_attrs,
+        );
 
         let ty = &field.ty;
         // TODO: It may be better to keep the original type if it is already an Option

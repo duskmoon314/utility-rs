@@ -17,10 +17,10 @@ Here is an example of how to use this crate.
 ```rust
 use utility_types::{Omit, Partial, Pick, Required};
 #[derive(Clone, Partial, Required, Pick, Omit)]
-#[partial(ident = PartialFoo, derive(Debug, PartialEq))]
-#[required(ident = RequiredFoo, derive(Debug, PartialEq))]
-#[pick(arg(ident = PickAB, fields(a, b), derive(Debug, PartialEq)))]
-#[omit(arg(ident = OmitCD, fields(c, d), derive(Debug, PartialEq)))]
+#[partial(ident = PartialFoo, derive(Debug, PartialEq), forward_attrs())]
+#[required(ident = RequiredFoo, derive(Debug, PartialEq), forward_attrs())]
+#[pick(arg(ident = PickAB, fields(a, b), derive(Debug, PartialEq)), forward_attrs())]
+#[omit(arg(ident = OmitCD, fields(c, d), derive(Debug, PartialEq)), forward_attrs())]
 pub struct Foo {
     a: u8,
     b: Option<u8>,
@@ -69,7 +69,14 @@ use serde::{Deserialize, Serialize};
 use utility_types::Omit;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Omit)]
-#[omit(arg(ident = OmitCD, fields(c, d), derive(Debug, PartialEq, Serialize, Deserialize), forward_attrs(serde)))]
+#[omit(
+    arg(
+        ident = OmitCD,
+        fields(c, d),
+        derive(Debug, PartialEq, Serialize, Deserialize),
+        forward_attrs(serde)
+    )
+)]
 #[serde(rename_all = "UPPERCASE")]
 pub struct Foo {
     a: u8,
@@ -81,11 +88,15 @@ let omit_cd: OmitCD = serde_json::from_str(r#"{"A": 1, "B": 2}"#).unwrap();
 assert_eq!(omit_cd, OmitCD { a: 1, b: Some(2) });
 ```
 
-If the `forward_attrs` attribute is not specified, default attributes are forwarded:
+The behavior of the `forward_attrs` attribute is as follows:
 
-- `allow`
-- `cfg`
-- `doc`
+- If **not provided**, all attributes are forwarded by default.
+- If provided with a list of attributes, only the specified attributes are forwarded.
+  - For example, `forward_attrs(doc, serde)` will forward only `doc` and `serde`.
+  - If provided with **only `*`** (`forward_attrs(*)`), all attributes are forwarded.
+  - If provided with **an empty list** (`forward_attrs()`), no attributes are forwarded.
+- If provided with a list inside `not()`, all attributes except the specified attributes are forwarded.
+  - For example, `forward_attrs(not(serde))` will forward all attributes except `serde`.
 
 ## Known Issue
 

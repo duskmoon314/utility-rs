@@ -19,7 +19,7 @@ mod required;
 /// Utility functions and types.
 mod utils;
 
-/// Constructs a struct with all fields of the original struct set to optional.
+/// Constructs a struct with all fields of the original struct set to **optional**.
 ///
 /// ## Example
 ///
@@ -58,14 +58,12 @@ mod utils;
 /// #[partial(
 ///     ident = <IDENT>, // The identifier of the generated struct
 ///     [derive(<DERIVE>, ...)], // Derive attributes for the generated struct
-///     [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated struct
-///         // If no attributes are specified, default attributes are forwarded
-///         // `allow`, `cfg`, and `doc`
+///     [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated struct
 /// )]
 /// pub struct BasedStruct {
 ///     #[partial(
 ///         [default = <DEFAULT>], // The default value of the field in the generated From impl
-///         [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated field
+///         [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated field
 ///             // If given, will override the container level `forward_attrs`
 ///     )]
 ///     field: FieldType,
@@ -76,7 +74,7 @@ pub fn partial(input: TokenStream) -> TokenStream {
     partial::partial(input)
 }
 
-/// Constructs a struct with all fields of the original struct set to required.
+/// Constructs a struct with all fields of the original struct set to **required**.
 ///
 /// ## Example
 ///
@@ -107,13 +105,11 @@ pub fn partial(input: TokenStream) -> TokenStream {
 /// #[required(
 ///     ident = <IDENT>, // The identifier of the generated struct
 ///     [derive(<DERIVE>, ...)], // Derive attributes for the generated struct
-///     [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated struct
-///         // If no attributes are specified, default attributes are forwarded
-///         // `allow`, `cfg`, and `doc`
+///     [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated struct
 /// )]
 /// pub struct BasedStruct {
 ///     #[required(
-///         [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated field
+///         [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated field
 ///             // If given, will override the container level `forward_attrs`
 ///     )]
 ///     field: FieldType,
@@ -124,15 +120,17 @@ pub fn required(input: TokenStream) -> TokenStream {
     required::required(input)
 }
 
-/// Constructs a struct by picking the set of fields from the original struct.
+/// Constructs structs by **picking** the set of fields from the original struct.
 ///
 /// ## Example
 ///
 /// ```ignore
 /// # use utility_types::Pick;
 /// #[derive(Pick)]
-/// #[pick(arg(ident = AuthorContent, fields(author, content), derive(Debug)))]
-/// #[pick(arg(ident = LikedComments, fields(liked, comments)))]
+/// #[pick(
+///     arg(ident = AuthorContent, fields(author, content), derive(Debug)),
+///     arg(ident = LikedComments, fields(liked, comments))
+/// )]
 /// pub struct Article {
 ///     author: String,
 ///     content: String,
@@ -166,22 +164,18 @@ pub fn required(input: TokenStream) -> TokenStream {
 /// # use utility_types::Pick;
 /// #[derive(Pick)]
 /// #[pick(
-///     [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated struct
-///         // If no attributes are specified, default attributes are forwarded
-///         // `allow`, `cfg`, and `doc`
-/// )]
-/// #[pick(
+///     [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to all generated structs
 ///     arg(
 ///         ident = <IDENT>, // The identifier of the generated struct
 ///         fields(<FIELD>, ...), // The fields to pick from the original struct
 ///         [derive(<DERIVE>, ...)], // Derive attributes for the generated struct
-///         [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated struct
+///         [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated struct
 ///             // If given, will override the container level `forward_attrs`
-///     ),
+///     ), ...
 /// )]
 /// pub struct BasedStruct {
 ///     #[pick(
-///         #[forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated field
+///         #[forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated field
 ///             // If given, will override the container level and arg level `forward_attrs`
 ///     )]
 ///     field: FieldType,
@@ -191,15 +185,17 @@ pub fn pick(input: TokenStream) -> TokenStream {
     pick::pick(input)
 }
 
-/// Constructs a struct by omitting the set of fields from the original struct.
+/// Constructs structs by **omitting** the set of fields from the original struct.
 ///
 /// ## Example
 ///
 /// ```
 /// # use utility_types::Omit;
 /// #[derive(Omit)]
-/// #[omit(arg(ident = OmitAuthorContent, fields(author, content), derive(Debug)))]
-/// #[omit(arg(ident = OmitLikedComments, fields(liked, comments)))]
+/// #[omit(
+///     arg(ident = OmitAuthorContent, fields(author, content), derive(Debug)),
+///     arg(ident = OmitLikedComments, fields(liked, comments))
+/// )]
 /// pub struct Article {
 ///     author: String,
 ///     content: String,
@@ -233,22 +229,18 @@ pub fn pick(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// #[derive(Omit)]
 /// #[omit(
-///     [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated struct
-///         // If no attributes are specified, default attributes are forwarded
-///         // `allow`, `cfg`, and `doc`
-/// )]
-/// #[omit(
+///     [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to all generated structs
 ///     arg(
 ///         ident = <IDENT>, // The identifier of the generated struct
 ///         fields(<FIELD>, ...), // The fields to omit from the original struct
 ///         [derive(<DERIVE>, ...)], // Derive attributes for the generated struct
-///         [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated struct
+///         [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated struct
 ///             // If given, will override the container level `forward_attrs`
-///     ),
+///     ), ...
 /// )]
 /// pub struct BasedStruct {
 ///     #[omit(
-///         #[forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated field
+///         #[forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated field
 ///             // If given, will override the container level and arg level `forward_attrs`
 ///     )]
 ///     field: FieldType,
@@ -259,7 +251,7 @@ pub fn omit(input: TokenStream) -> TokenStream {
     omit::omit(input)
 }
 
-/// Constructs an enum by extracting the set of variants from the original enum.
+/// Constructs enums by **extracting** the set of variants from the original enum.
 ///
 /// ## Example
 ///
@@ -288,22 +280,18 @@ pub fn omit(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// #[derive(Extract)]
 /// #[extract(
-///     [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated enum
-///         // If no attributes are specified, default attributes are forwarded
-///         // `allow`, `cfg`, and `doc`
-/// )]
-/// #[extract(
+///     [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to all generated enums
 ///     arg(
 ///         ident = <IDENT>, // The identifier of the generated enum
 ///         variants(<VARIANT>, ...), // The variants to extract from the original enum
 ///         [derive(<DERIVE>, ...)], // Derive attributes for the generated enum
-///         [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated enum
+///         [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated enum
 ///             // If given, will override the container level `forward_attrs`
-///     ),
+///     ), ...
 /// )]
 /// pub enum BasedEnum {
 ///     #[extract(
-///         [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated variant
+///         [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated variant
 ///             // If given, will override the container level and arg level `forward_attrs`
 ///     )]
 ///     variant: VariantType,
@@ -314,7 +302,7 @@ pub fn extract(input: TokenStream) -> TokenStream {
     extract::extract(input)
 }
 
-/// Constructs an enum by excluding the set of variants from the original enum.
+/// Constructs enums by **excluding** the set of variants from the original enum.
 ///
 /// ## Example
 ///
@@ -345,22 +333,18 @@ pub fn extract(input: TokenStream) -> TokenStream {
 /// ```ignore
 /// #[derive(Exclude)]
 /// #[exclude(
-///     [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated enum
-///         // If no attributes are specified, default attributes are forwarded
-///         // `allow`, `cfg`, and `doc`
-/// )]
-/// #[exclude(
+///     [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to all generated enums
 ///     arg(
 ///         ident = <IDENT>, // The identifier of the generated enum
 ///         variants(<VARIANT>, ...), // The variants to exclude from the original enum
 ///         [derive(<DERIVE>, ...)], // Derive attributes for the generated enum
-///         [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated enum
+///         [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated enum
 ///             // If given, will override the container level `forward_attrs`
 ///     ),
 /// )]
 /// pub enum BasedEnum {
 ///     #[exclude(
-///         [forward_attrs(<ATTR>, ...)], // Forward specific attributes to the generated variant
+///         [forward_attrs(<ATTR, ...> | not(<ATTR, ...>))], // Forward specific attributes to the generated variant
 ///             // If given, will override the container level and arg level `forward_attrs`
 ///     )]
 ///     variant: VariantType,

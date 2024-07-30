@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use darling::ast::{Data, Fields, Style};
 use darling::util::{Ignored, PathList};
 use darling::{FromDeriveInput, FromMeta, FromVariant};
@@ -7,7 +5,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Attribute, Field, Generics, Ident, Visibility};
 
-use crate::utils::{default_forward_attrs_filter, IdentList};
+use crate::utils::{filter_forward_attrs, ForwardAttrsFilter, IdentList};
 
 #[derive(Debug, FromMeta)]
 struct ExtractArgs {
@@ -17,32 +15,8 @@ struct ExtractArgs {
 
     derive: Option<PathList>,
 
-    forward_attrs: Option<PathList>,
-}
-
-#[derive(Debug)]
-struct ExtractArgsList(Vec<ExtractArgs>);
-
-impl Deref for ExtractArgsList {
-    type Target = Vec<ExtractArgs>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl FromMeta for ExtractArgsList {
-    fn from_list(items: &[darling::ast::NestedMeta]) -> darling::Result<Self> {
-        let values = items
-            .iter()
-            .map(|item| match item {
-                darling::ast::NestedMeta::Meta(meta) => ExtractArgs::from_meta(meta),
-                _ => Err(darling::Error::unexpected_type("non meta").with_span(item)),
-            })
-            .collect::<darling::Result<Vec<ExtractArgs>>>()?;
-
-        Ok(Self(values))
-    }
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromVariant)]
@@ -56,7 +30,8 @@ struct ExtractVariant {
 
     attrs: Vec<Attribute>,
 
-    forward_attrs: Option<PathList>,
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromDeriveInput)]
@@ -73,10 +48,11 @@ struct ExtractInput {
     attrs: Vec<Attribute>,
 
     /// The filter for attributes to forward to the generated enum.
-    forward_attrs: Option<PathList>,
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 
-    #[darling(flatten)]
-    args: ExtractArgsList,
+    #[darling(multiple, rename = "arg")]
+    args: Vec<ExtractArgs>,
 }
 
 pub fn extract(input: TokenStream) -> TokenStream {
@@ -102,11 +78,10 @@ pub fn extract(input: TokenStream) -> TokenStream {
             }
         });
 
-        let forward_attrs = arg.forward_attrs.as_ref().or(input.forward_attrs.as_ref());
-        let forward_attrs = input.attrs.iter().filter(|attr| match forward_attrs {
-            Some(filter) => filter.contains(attr.path()),
-            None => default_forward_attrs_filter(attr.path()),
-        });
+        let forward_attrs = filter_forward_attrs(
+            input.attrs.iter(),
+            &arg.forward_attrs + &input.forward_attrs,
+        );
 
         let extract_ident = &arg.ident;
 
@@ -122,15 +97,10 @@ pub fn extract(input: TokenStream) -> TokenStream {
                 return;
             }
 
-            let forward_attrs = variant
-                .forward_attrs
-                .as_ref()
-                .or(arg.forward_attrs.as_ref())
-                .or(input.forward_attrs.as_ref());
-            let forward_attrs = variant.attrs.iter().filter(|attr| match forward_attrs {
-                Some(filter) => filter.contains(attr.path()),
-                None => default_forward_attrs_filter(attr.path()),
-            });
+            let forward_attrs = filter_forward_attrs(
+                variant.attrs.iter(),
+                &variant.forward_attrs + &arg.forward_attrs + &input.forward_attrs,
+            );
 
             let fields = &variant.fields;
             let discriminant = &variant.discriminant;
