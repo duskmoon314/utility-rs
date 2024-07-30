@@ -1,6 +1,6 @@
 [package]
 name = "utility-types"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2021"
 authors = ["duskmoon (Campbell He) <kp.campbell.he@duskmoon314.com>"]
 license = "MIT"
