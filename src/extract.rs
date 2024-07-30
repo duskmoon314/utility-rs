@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use darling::ast::{Data, Fields, Style};
 use darling::util::{Ignored, PathList};
 use darling::{FromDeriveInput, FromMeta, FromVariant};
@@ -7,7 +5,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Attribute, Field, Generics, Ident, Visibility};
 
-use crate::utils::IdentList;
+use crate::utils::{filter_forward_attrs, ForwardAttrsFilter, IdentList};
 
 #[derive(Debug, FromMeta)]
 struct ExtractArgs {
@@ -16,35 +14,13 @@ struct ExtractArgs {
     variants: IdentList,
 
     derive: Option<PathList>,
-}
 
-#[derive(Debug)]
-struct ExtractArgsList(Vec<ExtractArgs>);
-
-impl Deref for ExtractArgsList {
-    type Target = Vec<ExtractArgs>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl FromMeta for ExtractArgsList {
-    fn from_list(items: &[darling::ast::NestedMeta]) -> darling::Result<Self> {
-        let values = items
-            .iter()
-            .map(|item| match item {
-                darling::ast::NestedMeta::Meta(meta) => ExtractArgs::from_meta(meta),
-                _ => Err(darling::Error::unexpected_type("non meta").with_span(item)),
-            })
-            .collect::<darling::Result<Vec<ExtractArgs>>>()?;
-
-        Ok(Self(values))
-    }
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromVariant)]
-#[darling(attributes(extract), forward_attrs(allow, doc, cfg))]
+#[darling(attributes(extract), forward_attrs)]
 struct ExtractVariant {
     ident: Ident,
 
@@ -53,14 +29,13 @@ struct ExtractVariant {
     fields: Fields<Field>,
 
     attrs: Vec<Attribute>,
+
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromDeriveInput)]
-#[darling(
-    attributes(extract),
-    forward_attrs(allow, doc, cfg),
-    supports(enum_any)
-)]
+#[darling(attributes(extract), forward_attrs, supports(enum_any))]
 struct ExtractInput {
     ident: Ident,
 
@@ -70,8 +45,14 @@ struct ExtractInput {
 
     data: Data<ExtractVariant, Ignored>,
 
-    #[darling(flatten)]
-    args: ExtractArgsList,
+    attrs: Vec<Attribute>,
+
+    /// The filter for attributes to forward to the generated enum.
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
+
+    #[darling(multiple, rename = "arg")]
+    args: Vec<ExtractArgs>,
 }
 
 pub fn extract(input: TokenStream) -> TokenStream {
@@ -90,15 +71,17 @@ pub fn extract(input: TokenStream) -> TokenStream {
     let variants = input.data.take_enum().unwrap();
 
     let extracts = input.args.iter().map(|arg| {
-        let derive_attr = match &arg.derive {
-            Some(derives) => {
-                let derives = derives.iter();
-                quote! {
-                    #[derive(#(#derives),*)]
-                }
+        let derive_attr = arg.derive.as_ref().map(|derives| {
+            let derives = derives.iter();
+            quote! {
+                #[derive(#(#derives),*)]
             }
-            None => quote! {},
-        };
+        });
+
+        let forward_attrs = filter_forward_attrs(
+            input.attrs.iter(),
+            &arg.forward_attrs + &input.forward_attrs,
+        );
 
         let extract_ident = &arg.ident;
 
@@ -114,13 +97,17 @@ pub fn extract(input: TokenStream) -> TokenStream {
                 return;
             }
 
-            let attrs = &variant.attrs;
+            let forward_attrs = filter_forward_attrs(
+                variant.attrs.iter(),
+                &variant.forward_attrs + &arg.forward_attrs + &input.forward_attrs,
+            );
+
             let fields = &variant.fields;
             let discriminant = &variant.discriminant;
 
             variant_idents.push(variant_ident);
             variant_declares.push(quote! {
-                #(#attrs)*
+                #(#forward_attrs)*
                 #variant_ident #fields #discriminant
             });
             variant_from_extract.push(match fields.style {
@@ -128,26 +115,32 @@ pub fn extract(input: TokenStream) -> TokenStream {
                     #extract_ident::#variant_ident => #ident::#variant_ident
                 },
                 Style::Tuple => {
-                    let field_idents = (0..fields.len()).map(|i| format_ident!("F{i}")).collect::<Vec<_>>();
+                    let field_idents = (0..fields.len())
+                        .map(|i| format_ident!("F{i}"))
+                        .collect::<Vec<_>>();
 
                     quote! {
                         #extract_ident::#variant_ident(#(#field_idents),*) => #ident::#variant_ident(#(#field_idents),*)
                     }
-                }
+                },
                 Style::Struct => {
-                    let field_idents = fields.iter().map(|field| field.ident.as_ref().unwrap()).collect::<Vec<_>>();
+                    let field_idents = fields
+                        .iter()
+                        .map(|field| field.ident.as_ref().unwrap())
+                        .collect::<Vec<_>>();
 
                     quote! {
                         #extract_ident::#variant_ident { #(#field_idents),* } => #ident::#variant_ident { #(#field_idents),* }
                     }
                 }
-            })
+            });
         });
 
         // TODO: Generics may not be needed in the generated struct
         // It may be better to check all fields for generics
         quote! {
             #derive_attr
+            #(#forward_attrs)*
             #vis enum #extract_ident #generics {
                 #(#variant_declares),*
             }

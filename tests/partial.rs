@@ -10,4 +10,5 @@ fn partial() {
     t.compile_fail("tests/partial/04-no-ident.rs");
     t.pass("tests/partial/05-ident-str.rs");
     t.pass("tests/partial/06-derive-empty.rs");
+    t.pass("tests/partial/07-forward-attrs.rs");
 }

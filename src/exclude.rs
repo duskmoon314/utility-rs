@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use darling::ast::{Data, Fields, Style};
 use darling::util::{Ignored, PathList};
 use darling::{FromDeriveInput, FromMeta, FromVariant};
@@ -7,7 +5,7 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Attribute, Field, Generics, Ident, Visibility};
 
-use crate::utils::IdentList;
+use crate::utils::{filter_forward_attrs, ForwardAttrsFilter, IdentList};
 
 #[derive(Debug, FromMeta)]
 struct ExcludeArgs {
@@ -16,35 +14,13 @@ struct ExcludeArgs {
     variants: IdentList,
 
     derive: Option<PathList>,
-}
 
-#[derive(Debug)]
-struct ExcludeArgsList(Vec<ExcludeArgs>);
-
-impl Deref for ExcludeArgsList {
-    type Target = Vec<ExcludeArgs>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl FromMeta for ExcludeArgsList {
-    fn from_list(items: &[darling::ast::NestedMeta]) -> darling::Result<Self> {
-        let values = items
-            .iter()
-            .map(|item| match item {
-                darling::ast::NestedMeta::Meta(meta) => ExcludeArgs::from_meta(meta),
-                _ => Err(darling::Error::unexpected_type("non meta").with_span(item)),
-            })
-            .collect::<darling::Result<Vec<ExcludeArgs>>>()?;
-
-        Ok(Self(values))
-    }
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromVariant)]
-#[darling(attributes(exclude), forward_attrs(allow, doc, cfg))]
+#[darling(attributes(exclude), forward_attrs)]
 struct ExcludeVariant {
     ident: Ident,
 
@@ -53,14 +29,13 @@ struct ExcludeVariant {
     fields: Fields<Field>,
 
     attrs: Vec<Attribute>,
+
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromDeriveInput)]
-#[darling(
-    attributes(exclude),
-    forward_attrs(allow, doc, cfg),
-    supports(enum_any)
-)]
+#[darling(attributes(exclude), forward_attrs, supports(enum_any))]
 struct ExcludeInput {
     ident: Ident,
 
@@ -70,8 +45,15 @@ struct ExcludeInput {
 
     data: Data<ExcludeVariant, Ignored>,
 
-    #[darling(flatten)]
-    args: ExcludeArgsList,
+    attrs: Vec<Attribute>,
+
+    /// The filter for attributes to forward to the generated enum.
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
+
+    /// Args for each generated enum.
+    #[darling(multiple, rename = "arg")]
+    args: Vec<ExcludeArgs>,
 }
 
 pub fn exclude(input: TokenStream) -> TokenStream {
@@ -90,15 +72,17 @@ pub fn exclude(input: TokenStream) -> TokenStream {
     let variants = input.data.take_enum().unwrap();
 
     let excludes = input.args.iter().map(|arg| {
-        let derive_attr = match &arg.derive {
-            Some(derives) => {
-                let derives = derives.iter();
-                quote! {
-                    #[derive(#(#derives),*)]
-                }
+        let derive_attr = arg.derive.as_ref().map(|derives| {
+            let derives = derives.iter();
+            quote! {
+                #[derive(#(#derives),*)]
             }
-            None => quote! {},
-        };
+        });
+
+        let forward_attrs = filter_forward_attrs(
+            input.attrs.iter(),
+            &arg.forward_attrs + &input.forward_attrs,
+        );
 
         let exclude_ident = &arg.ident;
 
@@ -114,13 +98,17 @@ pub fn exclude(input: TokenStream) -> TokenStream {
                 return;
             }
 
-            let attrs = &variant.attrs;
+            let forward_attrs = filter_forward_attrs(
+                variant.attrs.iter(),
+                &variant.forward_attrs + &arg.forward_attrs + &input.forward_attrs,
+            );
+
             let fields = &variant.fields;
             let discriminant = &variant.discriminant;
 
             variant_idents.push(variant_ident);
             variant_declares.push(quote! {
-                #(#attrs)*
+                #(#forward_attrs)*
                 #variant_ident #fields #discriminant
             });
             variant_from_exclude.push(match fields.style {
@@ -128,26 +116,31 @@ pub fn exclude(input: TokenStream) -> TokenStream {
                     #exclude_ident::#variant_ident => #ident::#variant_ident
                 },
                 Style::Tuple => {
-                    let field_idents = (0..fields.len()).map(|i| format_ident!("F{i}")).collect::<Vec<_>>();
-
+                    let field_idents = (0..fields.len())
+                        .map(|i| format_ident!("F{i}"))
+                        .collect::<Vec<_>>();
                     quote! {
                         #exclude_ident::#variant_ident(#(#field_idents),*) => #ident::#variant_ident(#(#field_idents),*)
                     }
-                }
+                },
                 Style::Struct => {
-                    let field_idents = fields.iter().map(|field| field.ident.as_ref().unwrap()).collect::<Vec<_>>();
+                    let field_idents = fields
+                        .iter()
+                        .map(|field| field.ident.as_ref().unwrap())
+                        .collect::<Vec<_>>();
 
                     quote! {
                         #exclude_ident::#variant_ident { #(#field_idents),* } => #ident::#variant_ident { #(#field_idents),* }
                     }
                 }
-            })
+            });
         });
 
         // TODO: Generics may not be needed in the generated struct
         // It may be better to check all fields for generics
         quote! {
             #derive_attr
+            #(#forward_attrs)*
             #vis enum #exclude_ident #generics {
                 #(#variant_declares),*
             }

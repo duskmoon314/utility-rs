@@ -12,4 +12,5 @@ fn omit() {
     t.compile_fail("tests/omit/06-empty-fields.rs");
     t.compile_fail("tests/omit/07-field-not-ident.rs");
     t.pass("tests/omit/08-field-not-exist.rs");
+    t.pass("tests/omit/09-forward-attrs.rs");
 }

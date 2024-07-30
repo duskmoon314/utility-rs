@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use darling::ast::Data;
 use darling::util::{Ignored, PathList};
 use darling::{FromDeriveInput, FromField, FromMeta};
@@ -7,7 +5,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Attribute, Generics, Ident, Type, Visibility};
 
-use crate::utils::IdentList;
+use crate::utils::{filter_forward_attrs, ForwardAttrsFilter, IdentList};
 
 #[derive(Debug, FromMeta)]
 struct OmitArgs {
@@ -16,35 +14,13 @@ struct OmitArgs {
     fields: IdentList,
 
     derive: Option<PathList>,
-}
 
-#[derive(Debug)]
-struct OmitArgsList(Vec<OmitArgs>);
-
-impl Deref for OmitArgsList {
-    type Target = Vec<OmitArgs>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl FromMeta for OmitArgsList {
-    fn from_list(items: &[darling::ast::NestedMeta]) -> darling::Result<Self> {
-        let values = items
-            .iter()
-            .map(|item| match item {
-                darling::ast::NestedMeta::Meta(meta) => OmitArgs::from_meta(meta),
-                _ => Err(darling::Error::unexpected_type("non meta").with_span(item)),
-            })
-            .collect::<darling::Result<Vec<OmitArgs>>>()?;
-
-        Ok(Self(values))
-    }
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromField)]
-#[darling(attributes(omit), forward_attrs(allow, doc, cfg))]
+#[darling(attributes(omit), forward_attrs)]
 struct OmitField {
     ident: Option<Ident>,
 
@@ -53,14 +29,13 @@ struct OmitField {
     ty: Type,
 
     attrs: Vec<Attribute>,
+
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
 }
 
 #[derive(Debug, FromDeriveInput)]
-#[darling(
-    attributes(omit),
-    forward_attrs(allow, doc, cfg),
-    supports(struct_named)
-)]
+#[darling(attributes(omit), forward_attrs, supports(struct_named))]
 struct OmitInput {
     ident: Ident,
 
@@ -70,8 +45,15 @@ struct OmitInput {
 
     data: Data<Ignored, OmitField>,
 
-    #[darling(flatten)]
-    args: OmitArgsList,
+    attrs: Vec<Attribute>,
+
+    /// The filter for attributes to forward to the generated struct
+    #[darling(default)]
+    forward_attrs: ForwardAttrsFilter,
+
+    /// Args for each generated struct
+    #[darling(multiple, rename = "arg")]
+    args: Vec<OmitArgs>,
 }
 
 pub fn omit(input: TokenStream) -> TokenStream {
@@ -90,15 +72,17 @@ pub fn omit(input: TokenStream) -> TokenStream {
     let fields = input.data.take_struct().unwrap();
 
     let omits = input.args.iter().map(|arg| {
-        let derive_attr = match &arg.derive {
-            Some(derives) => {
-                let derives = derives.iter();
-                quote! {
-                    #[derive(#(#derives),*)]
-                }
+        let derive_attr = arg.derive.as_ref().map(|derives| {
+            let derives = derives.iter();
+            quote! {
+                #[derive(#(#derives),*)]
             }
-            None => quote! {},
-        };
+        });
+
+        let forward_attrs = filter_forward_attrs(
+            input.attrs.iter(),
+            &arg.forward_attrs + &input.forward_attrs,
+        );
 
         let omit_ident = &arg.ident;
 
@@ -113,13 +97,17 @@ pub fn omit(input: TokenStream) -> TokenStream {
                 return;
             }
 
-            let attrs = &field.attrs;
+            let forward_attrs = filter_forward_attrs(
+                field.attrs.iter(),
+                &field.forward_attrs + &arg.forward_attrs + &input.forward_attrs,
+            );
+
             let vis = &field.vis;
             let ty = &field.ty;
 
             field_idents.push(ident);
             field_declares.push(quote! {
-                #(#attrs)*
+                #(#forward_attrs)*
                 #vis #ident: #ty,
             });
         });
@@ -128,6 +116,7 @@ pub fn omit(input: TokenStream) -> TokenStream {
         // It may be better to check all fields for generics
         quote! {
             #derive_attr
+            #(#forward_attrs)*
             #vis struct #omit_ident #generics {
                 #(#field_declares)*
             }
