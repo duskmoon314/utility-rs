@@ -1,0 +1,35 @@
+name: Check
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Check linting
+        run: cargo clippy -- -D warnings
+
+      - name: Check build
+        run: cargo build
+
+      - name: Check tests
+        run: cargo test
