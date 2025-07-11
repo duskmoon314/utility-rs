@@ -1,14 +1,18 @@
 # utility types
 
+[![crates.io](https://img.shields.io/crates/v/utility-types.svg)](https://crates.io/crates/utility-types)
+[![docs.rs](https://docs.rs/utility-types/badge.svg)](https://docs.rs/utility-types)
+
 This crate use proc-macro to realize several utility types of Typescript in Rust.
 
-| macro     | Typescript Utility Type                                                                                                                   |
-| --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| [Partial] | [Partial\<Type\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#partialtype)                                            |
-| [Pick]    | [Pick\<Type, Keys\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#picktype-keys)                                       |
-| [Omit]    | [Omit\<Type, Keys\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#omittype-keys)                                       |
-| [Extract] | [Extract\<Type, Union\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#extracttype-union)                               |
-| [Exclude] | [Exclude\<UnionType, ExcludedMembers\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#excludeuniontype-excludedmembers) |
+| macro      | Typescript Utility Type                                                                                                                   |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| [Partial]  | [Partial\<Type\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#partialtype)                                            |
+| [Required] | [Required\<Type\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#requiredtype)                                          |
+| [Pick]     | [Pick\<Type, Keys\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#picktype-keys)                                       |
+| [Omit]     | [Omit\<Type, Keys\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#omittype-keys)                                       |
+| [Extract]  | [Extract\<Type, Union\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#extracttype-union)                               |
+| [Exclude]  | [Exclude\<UnionType, ExcludedMembers\>](https://www.typescriptlang.org/docs/handbook/utility-types.html#excludeuniontype-excludedmembers) |
 
 ## Example
 
